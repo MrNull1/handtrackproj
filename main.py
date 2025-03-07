@@ -5,7 +5,7 @@ from cvzone.HandTrackingModule import HandDetector
 webcam = cv2.VideoCapture(0)
 
 #Initialize the Hand Tracker
-hand_detector = HandDetector(detectionCon=0.8, maxHands=2)
+hand_detector = HandDetector(detectionCon=0.8, maxHands=6)
 
 while True:
     #Capture the image from the webcam
