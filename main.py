@@ -1,90 +1,59 @@
 import cv2
-from cvzone.HandTrackingModule import HandDetector
+import mediapipe as mp
 import serial
 import time
 import numpy as np
 
-# Initialize webcam
+# Set up serial communication with Arduino
+ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1)  # Faster baud rate
+time.sleep(2)  # Allow time for connection
+
+# Initialize MediaPipe Hand Tracking
+mp_hands = mp.solutions.hands
+mp_draw = mp.solutions.drawing_utils
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
+
+# OpenCV video capture
 cap = cv2.VideoCapture(0)
 
-# Hand detector
-detector = HandDetector(detectionCon=0.8, maxHands=1)
+prev_value = 0  # Track previous finger position
+last_sent_time = time.time()
 
-# Serial connection
-arduino = serial.Serial('/dev/ttyACM0', 9600, timeout=1)
-time.sleep(2)
-
-# Finger landmarks
-INDEX_TIP = 8
-PALM_BASE = 0  # Wrist point for reference
-
-# Coordinate system parameters
-SCALE_FACTOR = 0.5  # Adjust sensitivity
-DEADZONE_RADIUS = 15  # Pixels
-
-# Reference positions
-ref_pos = None
-current_motor_pos = 512  # Midpoint (0-1023 range)
-
-
-def send_motor_position(pos):
-    """Send position to Arduino (0-1023)"""
-    pos = max(0, min(1023, int(pos)))
-    arduino.write(f"{pos}\n".encode())
-    return pos
-
-
-while True:
-    success, img = cap.read()
-    if not success:
+while cap.isOpened():
+    ret, frame = cap.read()
+    if not ret:
         break
 
-    hands, img = detector.findHands(img, flipType=True)
+    frame = cv2.flip(frame, 1)  # Mirror the frame
+    h, w, _ = frame.shape
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    result = hands.process(rgb_frame)
 
-    if hands:
-        hand = hands[0]
+    if result.multi_hand_landmarks:
+        for hand_landmarks in result.multi_hand_landmarks:
+            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-        if hand["type"] == "Right":
-            lmList = hand["lmList"]
+            # Get index finger tip and base positions
+            index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+            index_base = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP]
 
-            # Get current finger and palm positions
-            tip_pos = np.array(lmList[INDEX_TIP][:2])
-            palm_base = np.array(lmList[PALM_BASE][:2])
+            # Calculate vertical difference
+            finger_distance = index_tip.y - index_base.y
 
-            # Initialize reference on first detection
-            if ref_pos is None:
-                ref_pos = tip_pos.copy()
+            # Map to range (-500 to 500) for smooth motion
+            motor_value = int(np.clip(finger_distance * -1000, -500, 500))
 
-            # Calculate movement vector from reference
-            movement = tip_pos - ref_pos
-            distance = np.linalg.norm(movement)
+            # Send only if there's a significant change & not too frequent
+            if abs(motor_value - prev_value) > 5 and (time.time() - last_sent_time) > 0.05:
+                ser.write(f"{motor_value}\n".encode())
+                prev_value = motor_value
+                last_sent_time = time.time()
 
-            # Only update if outside deadzone
-            if distance > DEADZONE_RADIUS:
-                # Normalize and scale movement
-                direction = movement / distance
-                position_change = (movement * SCALE_FACTOR).astype(int)
+    cv2.imshow("Hand Tracking", frame)
 
-                # Update motor position
-                current_motor_pos = send_motor_position(
-                    current_motor_pos + position_change[1])  # Using Y-axis for vertical control
-
-                # Update reference position (elastic anchor)
-                ref_pos = tip_pos - (direction * DEADZONE_RADIUS)
-
-            # Visual feedback
-            cv2.circle(img, tuple(ref_pos.astype(int)), 10, (0, 255, 0), -1)
-            cv2.circle(img, tuple(tip_pos.astype(int)), 8, (255, 0, 0), -1)
-            cv2.line(img, tuple(ref_pos.astype(int)), tuple(tip_pos.astype(int)), (0, 0, 255), 2)
-            cv2.putText(img, f"Motor Pos: {current_motor_pos}", (10, 50),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-    cv2.imshow("Position Control", img)
-    if cv2.waitKey(1) == 27:
+    if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Reset motor to center on exit
-send_motor_position(512)
 cap.release()
 cv2.destroyAllWindows()
-arduino.close()
+ser.close()

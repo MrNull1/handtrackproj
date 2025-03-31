@@ -1,27 +1,31 @@
-#include <Stepper.h>
+#include <AccelStepper.h>
 
-const int STEPS_PER_REV = 2048;
-const int MAX_POSITION = 1023;
+// Define stepper motor connections & interface type
+#define MOTOR_INTERFACE_TYPE 4
+#define STEP_PIN 10
+#define DIR_PIN 11
+#define ENABLE_PIN 12  // Optional, can be removed if not used
 
-Stepper stepper(STEPS_PER_REV, 8, 10, 9, 11);  // IN1,IN3,IN2,IN4
+AccelStepper stepperMotor(MOTOR_INTERFACE_TYPE, STEP_PIN, DIR_PIN);
 
-int targetPos = 512;
-int currentPos = 512;
+int targetPosition = 0;  // Desired motor position
 
 void setup() {
-  Serial.begin(9600);
-  stepper.setSpeed(15);  // RPM
+    Serial.begin(115200);
+    stepperMotor.setMaxSpeed(17);   // Max speed (higher = faster)
+    stepperMotor.setAcceleration(500); // Acceleration rate
+    stepperMotor.setSpeed(17);         // Start at zero speed
 }
 
 void loop() {
-  if (Serial.available()) {
-    targetPos = constrain(Serial.parseInt(), 0, MAX_POSITION);
-    
-    int stepsToMove = map(targetPos, 0, MAX_POSITION, 0, STEPS_PER_REV) - currentPos;
-    
-    if (stepsToMove != 0) {
-      stepper.step(stepsToMove);
-      currentPos += stepsToMove;
+    if (Serial.available() > 0) {
+        String input = Serial.readStringUntil('\n');  // Read the serial input
+        targetPosition = input.toInt();  // Convert to integer
     }
-  }
+
+    // Set the new target position
+    stepperMotor.moveTo(targetPosition);
+
+    // Keep running the motor to reach the position
+    stepperMotor.run();
 }
