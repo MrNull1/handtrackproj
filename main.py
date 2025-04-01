@@ -33,17 +33,22 @@ while cap.isOpened():
                 mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
                 # Get index finger tip and base positions
-                index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y
-                index_base = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP].y
+                index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
+                index_base = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP]
 
                 # Calculate vertical difference
-                finger_distance = index_tip - index_base
-                finger_distance *= 25
-                finger_distance = int(finger_distance)
-                print(finger_distance)
+                finger_distance = index_tip.y - index_base.y
 
-                # Send finger distance to Arduino
-                ser.write(f"{finger_distance}\n".encode())
+                # Factor in depth (distance from the camera)
+                depth = index_tip.z
+                # Adjust the finger_distance based on depth (closer hands result in higher sensitivity)
+                adjusted_distance = finger_distance / (abs(depth) + 1)  # Normalize by depth
+                adjusted_distance *= 25
+                adjusted_distance = int(adjusted_distance)
+                print(adjusted_distance)
+
+                # Send adjusted distance to Arduino
+                ser.write(f"{adjusted_distance}\n".encode())
 
     cv2.imshow("Hand Tracking", frame)
 
