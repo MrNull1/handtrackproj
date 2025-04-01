@@ -3,21 +3,19 @@ import mediapipe as mp
 import serial
 import time
 import numpy as np
+from math import floor
 
 # Set up serial communication with Arduino
-ser = serial.Serial('/dev/ttyACM0', 115200, timeout=1)  # Faster baud rate
+ser = serial.Serial('/dev/cu.usbmodem1201', 115200, timeout=1)  # Faster baud rate
 time.sleep(2)  # Allow time for connection
 
 # Initialize MediaPipe Hand Tracking
 mp_hands = mp.solutions.hands
 mp_draw = mp.solutions.drawing_utils
-hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
+hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7, max_num_hands=1)
 
 # OpenCV video capture
 cap = cv2.VideoCapture(0)
-
-prev_value = 0  # Track previous finger position
-last_sent_time = time.time()
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -29,25 +27,23 @@ while cap.isOpened():
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     result = hands.process(rgb_frame)
 
-    if result.multi_hand_landmarks:
-        for hand_landmarks in result.multi_hand_landmarks:
-            mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+    if result.multi_hand_landmarks and result.multi_handedness:
+        for hand_landmarks, handedness in zip(result.multi_hand_landmarks, result.multi_handedness):
+            if handedness.classification[0].label == 'Right':  # Process only the right hand
+                mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-            # Get index finger tip and base positions
-            index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-            index_base = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP]
+                # Get index finger tip and base positions
+                index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP].y
+                index_base = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP].y
 
-            # Calculate vertical difference
-            finger_distance = index_tip.y - index_base.y
+                # Calculate vertical difference
+                finger_distance = index_tip - index_base
+                finger_distance *= 25
+                finger_distance = int(finger_distance)
+                print(finger_distance)
 
-            # Map to range (-500 to 500) for smooth motion
-            motor_value = int(np.clip(finger_distance * -1000, -500, 500))
-
-            # Send only if there's a significant change & not too frequent
-            if abs(motor_value - prev_value) > 5 and (time.time() - last_sent_time) > 0.05:
-                ser.write(f"{motor_value}\n".encode())
-                prev_value = motor_value
-                last_sent_time = time.time()
+                # Send finger distance to Arduino
+                ser.write(f"{finger_distance}\n".encode())
 
     cv2.imshow("Hand Tracking", frame)
 
