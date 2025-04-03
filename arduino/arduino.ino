@@ -9,32 +9,27 @@
 
 Stepper stepperMotor(STEPS_PER_REV, IN1_PIN, IN3_PIN, IN2_PIN, IN4_PIN);
 
-int currentPosition = 0;  // Track the current motor position
+int currentMotorPosition = 0;  // Track the motor's current position
+int targetPosition = 0;       // Track the finger's position
 
 void setup() {
     Serial.begin(115200);
-    stepperMotor.setSpeed(15);  // Set the motor speed (RPM)
+    stepperMotor.setSpeed(17);  // Set the motor speed (RPM)
 }
 
 void loop() {
+    // Check if there's new input from the serial monitor
     if (Serial.available() > 0) {
         String input = Serial.readStringUntil('\n');  // Read the serial input
-        int mappedPosition = input.toInt();          // Convert to integer
+        targetPosition = input.toInt();  // Update the target position based on finger
+    }
 
-        // Stop the motor if the mapped position is -6 or 2
-        if (mappedPosition == -6 || mappedPosition == 2) {
-            // Do nothing to stop the motor
-            return;
-        }
-
-        // Move motor forward for negative positions above -6
-        if (mappedPosition < 0 && mappedPosition > -6) {
-            stepperMotor.step(5);  // Move motor forward
-        }
-
-        // Move motor backward for positive positions below 2
-        else if (mappedPosition > 0 && mappedPosition < 2) {
-            stepperMotor.step(-5);  // Move motor backward
-        }
+    // Continuously move the motor toward the target position
+    if (currentMotorPosition < targetPosition) {
+        stepperMotor.step(25);  // Move forward one step
+        currentMotorPosition++;
+    } else if (currentMotorPosition > targetPosition) {
+        stepperMotor.step(-25);  // Move backward one step
+        currentMotorPosition--;
     }
 }
