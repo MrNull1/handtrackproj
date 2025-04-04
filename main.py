@@ -6,7 +6,7 @@ import numpy as np
 from math import floor
 
 # Set up serial communication with Arduino
-ser = serial.Serial('/dev/cu.usbmodem1201', 115200, timeout=1)  # Faster baud rate
+#ser = serial.Serial('/dev/cu.usbmodem1201', 115200, timeout=1)  # Faster baud rate
 time.sleep(2)  # Allow time for connection
 
 # Initialize MediaPipe Hand Tracking
@@ -48,7 +48,7 @@ while cap.isOpened():
                 print(adjusted_distance)
 
                 # Send adjusted distance to Arduino
-                ser.write(f"{adjusted_distance}\n".encode())
+                #ser.write(f"{adjusted_distance}\n".encode())
 
     cv2.imshow("Hand Tracking", frame)
 
