@@ -6,7 +6,7 @@ import numpy as np
 from math import floor
 
 # Set up serial communication with Arduino
-#ser = serial.Serial('/dev/cu.usbmodem1201', 115200, timeout=1)  # Faster baud rate
+ser = serial.Serial('/dev/cu.usbmodem1201', 115200, timeout=1)  # Faster baud rate
 time.sleep(2)  # Allow time for connection
 
 # Initialize MediaPipe Hand Tracking
@@ -16,7 +16,7 @@ hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7
 
 # OpenCV video capture
 cap = cv2.VideoCapture(0)
-
+# Python Code (Modified)
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
@@ -32,23 +32,35 @@ while cap.isOpened():
             if handedness.classification[0].label == 'Right':  # Process only the right hand
                 mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
-                # Get index finger tip and base positions
-                index_tip = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_TIP]
-                index_base = hand_landmarks.landmark[mp_hands.HandLandmark.INDEX_FINGER_MCP]
+                # Dictionary to store finger distances
+                finger_distances = {}
 
-                # Calculate vertical difference
-                finger_distance = index_tip.y - index_base.y
+                # List of finger landmarks to process (INDEX, MIDDLE, RING, PINKY)
+                fingers = [
+                    (mp_hands.HandLandmark.INDEX_FINGER_TIP, mp_hands.HandLandmark.INDEX_FINGER_MCP),
+                    (mp_hands.HandLandmark.MIDDLE_FINGER_TIP, mp_hands.HandLandmark.MIDDLE_FINGER_MCP),
+                    (mp_hands.HandLandmark.RING_FINGER_TIP, mp_hands.HandLandmark.RING_FINGER_MCP),
+                    (mp_hands.HandLandmark.PINKY_TIP, mp_hands.HandLandmark.PINKY_MCP)
+                ]
 
-                # Factor in depth (distance from the camera)
-                depth = index_tip.z
-                # Adjust the finger_distance based on depth (closer hands result in higher sensitivity)
-                adjusted_distance = finger_distance / (abs(depth) + 1)  # Normalize by depth
-                adjusted_distance *= 25
-                adjusted_distance = int(adjusted_distance)
-                print(adjusted_distance)
+                for i, (tip, base) in enumerate(fingers):
+                    tip_pos = hand_landmarks.landmark[tip]
+                    base_pos = hand_landmarks.landmark[base]
 
-                # Send adjusted distance to Arduino
-                #ser.write(f"{adjusted_distance}\n".encode())
+                    # Calculate vertical difference
+                    finger_distance = tip_pos.y - base_pos.y
+
+                    # Factor in depth (distance from the camera)
+                    depth = tip_pos.z
+                    adjusted_distance = finger_distance / (abs(depth) + 1)  # Normalize by depth
+                    adjusted_distance *= 25
+                    adjusted_distance = int(adjusted_distance)
+                    finger_distances[f"finger_{i + 1}"] = adjusted_distance
+
+                # Send finger distances to Arduino as a comma-separated string
+                serial_data = ",".join([str(v) for v in finger_distances.values()])
+                ser.write(f"{serial_data}\n".encode())
+                print(serial_data)
 
     cv2.imshow("Hand Tracking", frame)
 
