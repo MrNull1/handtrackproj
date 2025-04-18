@@ -1,8 +1,10 @@
 #include <Stepper.h>
+#include <EEPROM.h>
 
 // Define stepper motor connections & steps per revolution
 #define STEPS_PER_REV 2048
 #define NUM_MOTORS 4  // Number of stepper motors (4 fingers)
+#define EEPROM_START_ADDR 0  // Starting address for EEPROM storage
 
 // Pins for each motor
 const int motorPins[NUM_MOTORS][4] = {
@@ -26,12 +28,15 @@ int targetPositions[NUM_MOTORS] = {0, 0, 0, 0};
 int microPositions[NUM_MOTORS] = {0, 0, 0, 0};
 
 // Tweakable step limits for each finger
-const int stepLimits[NUM_MOTORS] = {80, 70, 100, 90};  // Example values: Index, Middle, Ring, Pinky
+const int stepLimits[NUM_MOTORS] = {300, 300, 500, 300};  // Example values: Index, Middle, Ring, Pinky
 
 void setup() {
     Serial.begin(115200);
     for (int i = 0; i < NUM_MOTORS; i++) {
         stepperMotors[i].setSpeed(10);  // Set motor speed to a reasonable low value (adjust as necessary)
+
+        // Load motor positions from EEPROM
+        EEPROM.get(EEPROM_START_ADDR + (i * sizeof(int)), currentMotorPositions[i]);
     }
 }
 
@@ -63,6 +68,7 @@ void loop() {
             if (microPositions[i] >= stepLimits[i]) {  // Use tweakable limit for each motor
                 currentMotorPositions[i]++;
                 microPositions[i] = 0;
+                EEPROM.put(EEPROM_START_ADDR + (i * sizeof(int)), currentMotorPositions[i]);
             }
         } else if (currentMotorPositions[i] > targetPositions[i]) {
             stepperMotors[i].step(-1);  // Move backward by one step
@@ -70,6 +76,7 @@ void loop() {
             if (microPositions[i] <= -stepLimits[i]) {  // Use tweakable limit for each motor
                 currentMotorPositions[i]--;
                 microPositions[i] = 0;
+                EEPROM.put(EEPROM_START_ADDR + (i * sizeof(int)), currentMotorPositions[i]);
             }
         }
     }

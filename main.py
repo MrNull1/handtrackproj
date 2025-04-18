@@ -16,18 +16,24 @@ hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7
 
 # OpenCV video capture
 cap = cv2.VideoCapture(0)
-# Python Code (Modified)
+
+# Calibration variables
+calibration_mode = False
+selected_finger = 0  # 0: Index, 1: Middle, 2: Ring, 3: Pinky
+step_amount = 0  # Step amount for adjustment
+finger_names = ["Index", "Middle", "Ring", "Pinky"]
+
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
 
     frame = cv2.flip(frame, 1)  # Mirror the frame
-    h, w, _ = frame.shape
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     result = hands.process(rgb_frame)
 
     if result.multi_hand_landmarks and result.multi_handedness:
+        # Regular Tracking Mode
         for hand_landmarks, handedness in zip(result.multi_hand_landmarks, result.multi_handedness):
             if handedness.classification[0].label == 'Right':  # Process only the right hand
                 mp_draw.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
@@ -62,10 +68,33 @@ while cap.isOpened():
                 ser.write(f"{serial_data}\n".encode())
                 print(serial_data)
 
-    cv2.imshow("Hand Tracking", frame)
+    if calibration_mode:
+        # Overlay calibration mode info on the video feed
+        cv2.putText(frame, f"Calibration Mode: ON", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(frame, f"Selected Finger: {finger_names[selected_finger]}", 
+                    (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, f"Step Amount: {step_amount}", 
+                    (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    cv2.imshow("Live Video Feed", frame)
+    key = cv2.waitKey(1) & 0xFF
+
+    if key == ord('q'):  # Quit program
         break
+    elif key == ord('t'):  # Toggle calibration mode
+        calibration_mode = not calibration_mode
+    elif calibration_mode:
+        # Handle calibration commands
+        if key in [ord('1'), ord('2'), ord('3'), ord('4')]:  # Select finger
+            selected_finger = key - ord('1')
+        elif key == ord('+'):  # Increase step amount
+            step_amount += 1
+        elif key == ord('-'):  # Decrease step amount
+            step_amount -= 1
+        elif key == ord('c'):  # Send calibration data
+            command = f"{selected_finger},{step_amount}"
+            ser.write(f"{command}\n".encode())
+            print(f"Sent Calibration Command to Arduino: {command}")
 
 cap.release()
 cv2.destroyAllWindows()
